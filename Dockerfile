@@ -1,7 +1,7 @@
 
 FROM golang:1.12-stretch AS gobuilder
 
-WORKDIR /go/src/github.com/bygui86/go-rest-postgres
+WORKDIR /go/src/github.com/bygui86/go-postgres
 COPY . .
 
 RUN ["/bin/bash", "-c", "go get -v -d ./..."]

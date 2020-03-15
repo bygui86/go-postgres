@@ -11,7 +11,7 @@ go build -v ./...
 
 ### From Docker
 ```shell
-docker build . -t go-rest-postgres:latest
+docker build . -t go-postgres:latest
 ```
 
 ---
@@ -27,12 +27,12 @@ docker build . -t go-rest-postgres:latest
 
 ### From code
 ```shell
-./go-rest-postgres
+./go-postgres
 ```
 
 ### From Docker\
 ```shell
-docker run -d --name go-rest-postgres -p 8080:8080 go-rest-postgres:latest
+docker run -d --name go-postgres -p 8080:8080 go-postgres:latest
 ```
 
 ---
