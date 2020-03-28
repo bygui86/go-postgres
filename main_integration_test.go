@@ -1,31 +1,31 @@
 package main_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
+	
+	"github.com/bygui86/go-postgres/database"
+	"github.com/bygui86/go-postgres/rest"
 )
 
-var a main.App
+// TODO to be fixed
 
-const tableCreationQuery = `CREATE TABLE IF NOT EXISTS products(
-    id SERIAL,
-    name TEXT NOT NULL,
-    price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
-    CONSTRAINT products_pkey PRIMARY KEY (id)
-)`
+var server *rest.Server
 
 // *** TESTS ***
 
 func TestMain(m *testing.M) {
-	a = main.App{}
-	a.Initialize(
-		os.Getenv("TEST_DB_USERNAME"),
-		os.Getenv("TEST_DB_PASSWORD"),
-		os.Getenv("TEST_DB_NAME"))
+	var err error
+	server, err = rest.NewServer()
+	if err != nil {
+		os.Exit(501)
+	}
 
 	ensureTableExists()
 
@@ -77,7 +77,7 @@ func TestGetProduct(t *testing.T) {
 func TestCreateProduct(t *testing.T) {
 	clearTable()
 
-	payload := []byte({"name":"test product","price":11.22})
+	payload := []byte("{'name':'test product','price':11.22}")
 
 	req, _ := http.NewRequest("POST", "/product", bytes.NewBuffer(payload))
 	response := executeRequest(req)
@@ -96,7 +96,7 @@ func TestCreateProduct(t *testing.T) {
 	}
 
 	// the id is compared to 1.0 because JSON unmarshaling converts numbers to
-	// floats, when the target is a map[string]interface{}
+	// floats, when the target is server map[string]interface{}
 	if m["id"] != 1.0 {
 		t.Errorf("Expected product ID to be '1'. Got '%v'", m["id"])
 	}
@@ -111,7 +111,7 @@ func TestUpdateProduct(t *testing.T) {
 	var originalProduct map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &originalProduct)
 
-	payload := []byte({"name":"test product - updated name","price":11.22})
+	payload := []byte("{'name':'test product - updated name','price':11.22}")
 
 	req, _ = http.NewRequest("PUT", "/product/1", bytes.NewBuffer(payload))
 	response = executeRequest(req)
@@ -155,14 +155,15 @@ func TestDeleteProduct(t *testing.T) {
 // *** UTILS ***
 
 func ensureTableExists() {
-	if _, err := a.DB.Exec(tableCreationQuery); err != nil {
+	_, err := server.DbConnection.Exec(database.CreateTableQuery)
+	if err != nil {
 		log.Fatal(err)
 	}
 }
 
 func clearTable() {
-	a.DB.Exec("DELETE FROM products")
-	a.DB.Exec("ALTER SEQUENCE products_id_seq RESTART WITH 1")
+	server.DbConnection.Exec("DELETE FROM products")
+	server.DbConnection.Exec("ALTER SEQUENCE products_id_seq RESTART WITH 1")
 }
 
 func checkResponseCode(t *testing.T, expected, actual int) {
@@ -173,7 +174,7 @@ func checkResponseCode(t *testing.T, expected, actual int) {
 
 func executeRequest(req *http.Request) *httptest.ResponseRecorder {
 	rr := httptest.NewRecorder()
-	a.Router.ServeHTTP(rr, req)
+	server.Router.ServeHTTP(rr, req)
 
 	return rr
 }
@@ -184,6 +185,6 @@ func addProducts(count int) {
 	}
 
 	for i := 0; i < count; i++ {
-		a.DB.Exec("INSERT INTO products(name, price) VALUES($1, $2)", "Product "+strconv.Itoa(i), (i+1.0)*10)
+		server.DbConnection.Exec("INSERT INTO products(name, price) VALUES($1, $2)", "Product "+strconv.Itoa(i), (i+1.0)*10)
 	}
 }
