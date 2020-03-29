@@ -29,6 +29,8 @@ make run-postgres
 make run
 ```
 
+3. play a bit with [Postman](https://www.postman.com/) loading the [prepared collection](postman/postman_collection.json)
+
 ---
 
 ## REST endpoints
