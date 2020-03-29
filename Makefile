@@ -14,6 +14,10 @@ build :		## Build application
 	export GO111MODULE=on && \
 	go build
 
+test : run-postgres		## Run tests (required a running PostgreSQL instance)
+	export GO111MODULE=on && \
+	go test ./...
+
 run :		## Run application from source code
 	export GO111MODULE=on && \
 	godotenv -f local.env go run main.go

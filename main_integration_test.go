@@ -11,36 +11,46 @@ import (
 	"testing"
 	
 	"github.com/bygui86/go-postgres/database"
+	"github.com/bygui86/go-postgres/logging"
 	"github.com/bygui86/go-postgres/rest"
 )
-
-// TODO to be fixed
 
 var server *rest.Server
 
 // *** TESTS ***
 
 func TestMain(m *testing.M) {
+	// setup
+	envVarsErr := setEnvVars()
+	if envVarsErr != nil {
+		logging.SugaredLog.Errorf("Setup environment variables failed: %s", envVarsErr.Error())
+		os.Exit(501)
+	}
+	
 	var err error
 	server, err = rest.NewServer()
 	if err != nil {
+		logging.SugaredLog.Errorf("REST server creation failed: %s", err.Error())
 		os.Exit(501)
 	}
-
 	ensureTableExists()
-
+	
+	// execute
 	code := m.Run()
-
+	
+	// teardown
 	clearTable()
-
-	os.Exit(code)
+	os.Exit(code) // does not respect defer statements
 }
 
 func TestEmptyTable(t *testing.T) {
 	clearTable()
 
-	req, _ := http.NewRequest("GET", "/products", nil)
-	response := executeRequest(req)
+	request, reqErr := http.NewRequest("GET", "/products", nil)
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response := executeRequest(request)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
 
@@ -52,8 +62,11 @@ func TestEmptyTable(t *testing.T) {
 func TestGetNonExistentProduct(t *testing.T) {
 	clearTable()
 
-	req, _ := http.NewRequest("GET", "/product/11", nil)
-	response := executeRequest(req)
+	request, reqErr := http.NewRequest("GET", "/products/11", nil)
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response := executeRequest(request)
 
 	checkResponseCode(t, http.StatusNotFound, response.Code)
 
@@ -68,8 +81,11 @@ func TestGetProduct(t *testing.T) {
 	clearTable()
 	addProducts(1)
 
-	req, _ := http.NewRequest("GET", "/product/1", nil)
-	response := executeRequest(req)
+	request, reqErr := http.NewRequest("GET", "/products/1", nil)
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response := executeRequest(request)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
 }
@@ -77,28 +93,40 @@ func TestGetProduct(t *testing.T) {
 func TestCreateProduct(t *testing.T) {
 	clearTable()
 
-	payload := []byte("{'name':'test product','price':11.22}")
-
-	req, _ := http.NewRequest("POST", "/product", bytes.NewBuffer(payload))
-	response := executeRequest(req)
+	productName := "test product"
+	productPrice := 11.22
+	product := &database.Product{
+		Name:  productName,
+		Price: productPrice,
+	}
+	payload, marshErr := json.Marshal(product)
+	if marshErr != nil {
+		t.Errorf("Product marshal error: %s", marshErr.Error())
+	}
+	
+	request, reqErr := http.NewRequest("POST", "/products", bytes.NewBuffer(payload))
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response := executeRequest(request)
 
 	checkResponseCode(t, http.StatusCreated, response.Code)
-
-	var m map[string]interface{}
-	json.Unmarshal(response.Body.Bytes(), &m)
-
-	if m["name"] != "test product" {
-		t.Errorf("Expected product name to be 'test product'. Got '%v'", m["name"])
+	
+	var responseProduct database.Product
+	unmarshErr := json.Unmarshal(response.Body.Bytes(), &responseProduct)
+	if unmarshErr != nil {
+		t.Errorf("Product unmarshal error: %s", unmarshErr.Error())
 	}
-
-	if m["price"] != 11.22 {
-		t.Errorf("Expected product price to be '11.22'. Got '%v'", m["price"])
+	
+	expectedProductId := 1
+	if responseProduct.ID != expectedProductId {
+		t.Errorf("Expected product ID to be '%d'. Got '%d'", expectedProductId, responseProduct.ID)
 	}
-
-	// the id is compared to 1.0 because JSON unmarshaling converts numbers to
-	// floats, when the target is server map[string]interface{}
-	if m["id"] != 1.0 {
-		t.Errorf("Expected product ID to be '1'. Got '%v'", m["id"])
+	if responseProduct.Name != productName {
+		t.Errorf("Expected product name to be '%s'. Got '%s'", productName, responseProduct.Name)
+	}
+	if responseProduct.Price != productPrice {
+		t.Errorf("Expected product price to be '%f'. Got '%f'", productPrice, responseProduct.Price)
 	}
 }
 
@@ -106,31 +134,48 @@ func TestUpdateProduct(t *testing.T) {
 	clearTable()
 	addProducts(1)
 
-	req, _ := http.NewRequest("GET", "/product/1", nil)
-	response := executeRequest(req)
-	var originalProduct map[string]interface{}
-	json.Unmarshal(response.Body.Bytes(), &originalProduct)
-
-	payload := []byte("{'name':'test product - updated name','price':11.22}")
-
-	req, _ = http.NewRequest("PUT", "/product/1", bytes.NewBuffer(payload))
-	response = executeRequest(req)
+	request, reqErr := http.NewRequest("GET", "/products/1", nil)
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response := executeRequest(request)
+	var originalProduct database.Product
+	unmarshErr := json.Unmarshal(response.Body.Bytes(), &originalProduct)
+	if unmarshErr != nil {
+		t.Errorf("Product unmarshal error: %s", unmarshErr.Error())
+	}
+	
+	updatedProductName := "updated product"
+	updatedProductPrice := 9.42
+	updatedProduct := &database.Product{
+		ID:    originalProduct.ID,
+		Name:  updatedProductName,
+		Price: updatedProductPrice,
+	}
+	payload, marshErr := json.Marshal(updatedProduct)
+	if marshErr != nil {
+		t.Errorf("Product marshal error: %s", marshErr.Error())
+	}
+	
+	request, _ = http.NewRequest("PUT", "/products/1", bytes.NewBuffer(payload))
+	response = executeRequest(request)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
-
-	var m map[string]interface{}
-	json.Unmarshal(response.Body.Bytes(), &m)
-
-	if m["id"] != originalProduct["id"] {
-		t.Errorf("Expected the id to remain the same (%v). Got %v", originalProduct["id"], m["id"])
+	
+	var responseProduct database.Product
+	unmarshErr = json.Unmarshal(response.Body.Bytes(), &responseProduct)
+	if unmarshErr != nil {
+		t.Errorf("Product unmarshal error: %s", unmarshErr.Error())
 	}
-
-	if m["name"] == originalProduct["name"] {
-		t.Errorf("Expected the name to change from '%v' to '%v'. Got '%v'", originalProduct["name"], m["name"], m["name"])
+	
+	if responseProduct.ID != originalProduct.ID {
+		t.Errorf("Expected product ID to remain the same '%d'. Got '%d'", originalProduct.ID, responseProduct.ID)
 	}
-
-	if m["price"] == originalProduct["price"] {
-		t.Errorf("Expected the price to change from '%v' to '%v'. Got '%v'", originalProduct["price"], m["price"], m["price"])
+	if responseProduct.Name != updatedProductName {
+		t.Errorf("Expected product name to change from '%s' to '%s'. Got '%s'", originalProduct.Name, updatedProductName, responseProduct.Name)
+	}
+	if responseProduct.Price != updatedProductPrice {
+		t.Errorf("Expected product price to change from '%f' to '%f'. Got '%f'", originalProduct.Price, updatedProductPrice, responseProduct.Price)
 	}
 }
 
@@ -138,21 +183,45 @@ func TestDeleteProduct(t *testing.T) {
 	clearTable()
 	addProducts(1)
 
-	req, _ := http.NewRequest("GET", "/product/1", nil)
-	response := executeRequest(req)
+	request, reqErr := http.NewRequest("GET", "/products/1", nil)
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response := executeRequest(request)
 	checkResponseCode(t, http.StatusOK, response.Code)
 
-	req, _ = http.NewRequest("DELETE", "/product/1", nil)
-	response = executeRequest(req)
-
+	request, reqErr = http.NewRequest("DELETE", "/products/1", nil)
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response = executeRequest(request)
 	checkResponseCode(t, http.StatusOK, response.Code)
 
-	req, _ = http.NewRequest("GET", "/product/1", nil)
-	response = executeRequest(req)
+	request, reqErr = http.NewRequest("GET", "/products/1", nil)
+	if reqErr != nil {
+		t.Errorf("Create request failed: %s", reqErr.Error())
+	}
+	response = executeRequest(request)
 	checkResponseCode(t, http.StatusNotFound, response.Code)
 }
 
 // *** UTILS ***
+
+func setEnvVars() error {
+	userErr := os.Setenv("DB_USERNAME", "postgres")
+	if userErr != nil {
+		return userErr
+	}
+	pwErr:=os.Setenv("DB_PASSWORD", "supersecret")
+	if pwErr != nil {
+		return pwErr
+	}
+	nameErr:=os.Setenv("DB_NAME", "postgres")
+	if nameErr != nil {
+		return nameErr
+	}
+	return nil
+}
 
 func ensureTableExists() {
 	_, err := server.DbConnection.Exec(database.CreateTableQuery)
@@ -173,10 +242,9 @@ func checkResponseCode(t *testing.T, expected, actual int) {
 }
 
 func executeRequest(req *http.Request) *httptest.ResponseRecorder {
-	rr := httptest.NewRecorder()
-	server.Router.ServeHTTP(rr, req)
-
-	return rr
+	responseRecorder := httptest.NewRecorder()
+	server.Router.ServeHTTP(responseRecorder, req)
+	return responseRecorder
 }
 
 func addProducts(count int) {

@@ -1,41 +1,32 @@
 
-# Go REST Postgres
+# Go postgres
+
+Example project to test PostgreSQL integration in Go
 
 ## Build
-
-### From code
 ```shell script
-go get -t -d -v ./...
-go build -v ./...
+make build
 ```
 
-### From Docker
+---
+
+## Test
 ```shell script
-docker build . -t go-postgres:latest
+make test
 ```
 
 ---
 
 ## Run
 
-### Preliminary steps
-1. Build application
-2. Spin up PostgreSQL with Docker
-	```shell script
-	docker run -d --name postgres \
-		-e POSTGRES_PASSWORD=supersecret \
-		-p 5432:5432 \
-		postgres
-	```
-
-### From code
+1. start PostgreSQL in a container
 ```shell script
-./go-postgres
+make run-postgres
 ```
 
-### From Docker
+2. run application
 ```shell script
-docker run -d --name go-postgres -p 8080:8080 go-postgres:latest
+make run
 ```
 
 ---
@@ -53,3 +44,4 @@ docker run -d --name go-postgres -p 8080:8080 go-postgres:latest
 ## Links
 - https://semaphoreci.com/community/tutorials/building-and-testing-a-rest-api-in-go-with-gorilla-mux-and-postgresql
 - https://errorsingo.com/github.com-lib-pq-err-ssl-not-supported/
+- https://medium.com/goingogo/why-use-testmain-for-testing-in-go-dafb52b406bc
